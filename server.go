@@ -7,8 +7,11 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
 )
+
+// inspo https://www.soberkoder.com/go-rest-api-mysql-gorm/
 
 type Result struct {
 	ID           int    `json:"id"`
@@ -20,17 +23,29 @@ type Result struct {
 
 type Results []Result
 
-func allResults(w http.ResponseWriter, r *http.Request) {
-	results := Results{
-		Result{ID: 99, State: "test state", EC: 10, TrumpPercent: 48, BidenPercent: 50},
-	}
+func getResult(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	inputResultID := params["id"]
+
+	var result Result
+	db.Preload("Results").First(&result, inputResultID)
+	json.NewEncoder(w).Encode(result)
+}
+
+func getResults(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var results []Result
+
+	// Find() fetches all results
+	db.Preload("Result").Find(&results)
 
 	fmt.Println("allResults endpoint hit")
 	json.NewEncoder(w).Encode(results)
 
 }
 
-func testPostResults(w http.ResponseWriter, r *http.Request) {
+func postResults(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Test POST endpoint hit")
 }
 
@@ -40,12 +55,37 @@ func homePage(w http.ResponseWriter, r *http.Request) {
 
 func handleRequests() {
 	myRouter := mux.NewRouter().StrictSlash(true)
-
+	// not a great use case for crud :)
 	myRouter.HandleFunc("/", homePage)
-	myRouter.HandleFunc("/results", allResults).Methods("GET")
-	myRouter.HandleFunc("/results", testPostResults).Methods("POST")
+	// create
+	myRouter.HandleFunc("/results", postResults).Methods("POST")
+	// read
+	myRouter.HandleFunc("/results", getResult).Methods("GET")
+	// read all
+	myRouter.HandleFunc("/results", getResults).Methods("GET")
+
+	initDB()
+
 	log.Fatal(http.ListenAndServe(":8080", myRouter))
 
+}
+
+var db *gorm.DB
+
+func initDB() {
+	var err error
+	// dataSourceName := "your_username:your_password@tcp(localhost:3306)/your_database_name?parseTime=True"
+	dataSource := "root:@tcp(localhost:8080)/?parseTime=True"
+	db, err = gorm.Open("mysql", dataSource)
+
+	if err != nil {
+		fmt.Println(err)
+		panic("failed to connect database")
+	}
+
+	//create db - comment out if db is already created
+	db.Exec("CREATE DATABASE resultsdb")
+	db.Exec("USE resultsdb")
 }
 
 func main() {
